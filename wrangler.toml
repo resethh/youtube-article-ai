@@ -1,0 +1,31 @@
+name = "youtube-article-ai"
+main = "dist/worker.js"
+compatibility_date = "2024-10-01"
+
+# 静态资源：构建产物 dist/public/（esbuild 打包前端脚本后输出）
+assets = { directory = "dist/public", binding = "ASSETS" }
+
+[[durable_objects.bindings]]
+name = "SESSION_DO"
+class_name = "SessionDO"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["SessionDO"]
+
+[vars]
+# 会话上下文 TTL（秒），默认 24 小时
+SESSION_TTL_SECONDS = "86400"
+# Gemini 模型
+GEMINI_MODEL = "gemini-2.0-flash"
+
+# 可选：YouTube 降级代理（webshare.io 免费代理），未配置则不启用
+# PROXY_HOST = "proxy.webshare.io"
+# PROXY_PORT = "80"
+# PROXY_USER = ""
+# PROXY_PASS = ""
+
+# 可选：YouTube player API 的 client profile 覆盖
+# YT_CLIENT = "ANDROID"
+
+# 注意：GEMINI_API_KEY 请用 `wrangler secret put GEMINI_API_KEY` 注入

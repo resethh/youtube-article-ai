@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.wrangler/
+.dev.vars
+*.log
+.DS_Store
+
+# 本地 Claude Code 配置（含明文 API Token，不入库）
+.claude/settings.json

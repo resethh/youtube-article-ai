@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>YT 语镜 · YouTube → 中文对话文章</title>
+  <meta name="description" content="输入 YouTube 视频链接，AI 基于字幕流式生成中文对话解读文章，支持章节 5W1H 剖析。" />
+  <link rel="stylesheet" href="/style.css" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎬</text></svg>" />
+</head>
+<body>
+  <div class="bg-orbs" aria-hidden="true">
+    <div class="orb orb-1"></div>
+    <div class="orb orb-2"></div>
+    <div class="orb orb-3"></div>
+  </div>
+
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark">YT</span>
+      <span class="brand-name">语镜 <em>Lens</em></span>
+    </div>
+    <div id="statusBadge" class="status-badge idle">
+      <span class="dot"></span><span id="statusText">待命</span>
+    </div>
+  </header>
+
+  <main class="shell">
+    <!-- 输入工作区 -->
+    <section class="panel input-panel" id="inputPanel">
+      <div class="field">
+        <label class="field-label" for="videoUrl">YouTube 视频链接</label>
+        <input
+          id="videoUrl"
+          class="glass-input"
+          type="url"
+          placeholder="https://www.youtube.com/watch?v=..."
+          autocomplete="off"
+          spellcheck="false"
+        />
+        <p class="field-hint" id="urlHint">示例：xRh2sVcNXQ8 · 需要视频本身带字幕（含自动生成字幕）</p>
+      </div>
+
+      <div class="field">
+        <button type="button" class="req-toggle" id="reqToggle" aria-expanded="false">
+          <span class="req-toggle-title">生成要求 <small>（可选）</small></span>
+          <span class="req-toggle-arrow">▾</span>
+        </button>
+        <div class="req-wrap" id="reqWrap" hidden>
+          <label class="field-label" for="reqText">用自然语言描述你的要求</label>
+          <textarea
+            id="reqText"
+            class="glass-textarea"
+            rows="3"
+            placeholder="例如：面向产品经理的深度解读，风格偏分析型，控制在 1000 字以内，重点讲商业逻辑，不要堆砌术语"
+          ></textarea>
+          <div class="chip-row" id="chipRow">
+            <button type="button" class="chip" data-dim="taskType">任务类型</button>
+            <button type="button" class="chip" data-dim="outputStyle">输出风格</button>
+            <button type="button" class="chip" data-dim="audience">目标受众</button>
+            <button type="button" class="chip" data-dim="constraints">约束条件</button>
+          </div>
+        </div>
+      </div>
+
+      <button id="generateBtn" class="btn-primary">
+        <span class="btn-label">生成中文对话文章</span>
+        <span class="btn-icon">→</span>
+      </button>
+    </section>
+
+    <!-- 流式渲染区 -->
+    <section class="panel article-panel" id="articlePanel" hidden>
+      <div class="article-head">
+        <h2 class="article-video-title" id="videoTitle"></h2>
+        <div id="fallbackBadge" class="fallback-badge" hidden></div>
+        <nav class="toc" id="toc" hidden></nav>
+      </div>
+      <article id="articleBody" class="article-body markdown"></article>
+      <div class="cursor-line" id="cursorLine"></div>
+      <div class="article-foot" id="articleFoot" hidden>
+        <button id="copyBtn" class="btn-ghost">复制全文</button>
+        <button id="retryBtn" class="btn-ghost">重新生成</button>
+      </div>
+    </section>
+
+    <section class="empty-state" id="emptyState">
+      <div class="empty-icon">◈</div>
+      <p class="empty-title">把一段 YouTube 字幕，变成一篇有思想的中文对话文章</p>
+      <p class="empty-desc">抓取字幕 → 流式生成 → 章节 5W1H 剖析。全程实时可见。</p>
+    </section>
+  </main>
+
+  <!-- 5W1H 弹层 -->
+  <div class="overlay" id="overlay" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+      <button class="modal-close" id="modalClose" aria-label="关闭">✕</button>
+      <h3 class="modal-title" id="modalTitle">章节 5W1H</h3>
+      <p class="modal-sub" id="modalSub"></p>
+      <div class="w5h-grid" id="w5hGrid"></div>
+      <div class="modal-loading" id="modalLoading">
+        <span class="spinner"></span><span>正在结合全片上下文分析…</span>
+      </div>
+      <div class="modal-error" id="modalError" hidden></div>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
