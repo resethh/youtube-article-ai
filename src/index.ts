@@ -8,6 +8,7 @@ import { readConfig, type AppEnv } from './config';
 import { fetchCaptions, extractVideoId } from './lib/youtube';
 import { streamGenerate, parseRequirements, requirementsToPrompt } from './lib/gemini';
 import { createChapterScanner, extractChapters } from './lib/chapters';
+import { logInfo, logWarn } from './lib/log';
 import type { SessionContext } from './sessions';
 import type { CaptionResult, ParsedRequirements } from './lib/types';
 
@@ -49,6 +50,23 @@ async function handleArticle(request: Request, env: AppEnv): Promise<Response> {
   let requirements: ParsedRequirements | undefined;
   if (body.requirement?.trim()) {
     requirements = await parseRequirements(config, body.requirement.trim());
+  }
+
+  // 字幕来源日志：区分真实字幕 / 演示兜底及原因
+  if (captions.source === 'demo') {
+    logWarn('article', '使用内置演示字幕（YouTube 获取失败）', {
+      videoId,
+      fallbackReason: captions.fallbackReason ?? null,
+      source: captions.source,
+    });
+  } else {
+    logInfo('article', '字幕获取成功', {
+      videoId,
+      source: captions.source,
+      title: captions.title,
+      segments: captions.segments.length,
+      fallbackReason: captions.fallbackReason ?? null,
+    });
   }
 
   // 3. 构造 prompt

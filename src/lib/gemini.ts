@@ -5,8 +5,7 @@
  */
 import type { Config } from '../config';
 import type { ParsedRequirements } from './types';
-
-const BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
+import { httpsRequestViaProxy, httpsStreamViaProxy } from './proxy';
 
 export interface GeminiStreamCallbacks {
   /** 每收到一段文本增量 */
@@ -21,75 +20,142 @@ export async function streamGenerate(
   prompt: string,
   callbacks: GeminiStreamCallbacks,
 ): Promise<void> {
-  const url = `${BASE}/${config.geminiModel}:streamGenerateContent?alt=sse&key=${config.geminiApiKey}`;
-  const resp = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      generationConfig: { temperature: 0.7, maxOutputTokens: 8192 },
-    }),
+  const host = 'generativelanguage.googleapis.com';
+  const path = `/v1beta/models/${config.geminiModel}:streamGenerateContent`;
+  const query = `alt=sse&key=${config.geminiApiKey}`;
+  const payload = JSON.stringify({
+    contents: [{ role: 'user', parts: [{ text: prompt }] }],
+    generationConfig: { temperature: 0.7, maxOutputTokens: 8192 },
   });
-  if (!resp.ok) {
-    const err = await resp.text().catch(() => '');
-    throw new Error(`Gemini 流式请求失败 ${resp.status}: ${err.slice(0, 300)}`);
+
+  let chunks: AsyncIterable<Uint8Array>;
+  let status: number;
+
+  if (config.proxy) {
+    // 本地/受限网络：走代理隧道（流式，逐块读取）
+    const proxied = await httpsStreamViaProxy(
+      config.proxy,
+      'POST',
+      host,
+      `${path}?${query}`,
+      { 'Content-Type': 'application/json' },
+      payload,
+    );
+    status = proxied.status;
+    chunks = proxied.chunks;
+  } else {
+    const resp = await fetch(`https://${host}${path}?${query}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: payload,
+    });
+    status = resp.status;
+    chunks = resp.ok
+      ? { async *[Symbol.asyncIterator]() {
+          const reader = resp.body!.getReader();
+          for (;;) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            yield value;
+          }
+        } }
+      : emptyChunks();
   }
 
-  const reader = resp.body!.getReader();
-  const decoder = new TextDecoder();
-  let buf = '';
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buf += decoder.decode(value, { stream: true });
-    // 上游 SSE：data: {...}\n\n，可一次含多条
-    let idx: number;
-    while ((idx = buf.indexOf('\n\n')) >= 0) {
-      const event = buf.slice(0, idx);
-      buf = buf.slice(idx + 2);
-      const dataLine = event.split('\n').find((l) => l.startsWith('data:'));
-      if (!dataLine) continue;
-      const payload = JSON.parse(dataLine.slice(5).trim());
-      const delta = payload?.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (delta) callbacks.onDelta(delta);
-    }
+  if (status !== 200) {
+    throw new Error(`Gemini 流式请求失败 ${status}: ${(await collectString(chunks)).slice(0, 300)}`);
   }
-  // 处理剩余（无结尾双换行）
-  if (buf.trim()) {
-    const dataLine = buf.split('\n').find((l) => l.startsWith('data:'));
-    if (dataLine) {
-      try {
-        const payload = JSON.parse(dataLine.slice(5).trim());
-        const delta = payload?.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (delta) callbacks.onDelta(delta);
-      } catch {
-        /* ignore */
-      }
-    }
-  }
+
+  await consumeSse(chunks, callbacks);
   callbacks.onDone?.();
 }
 
-/** 非流式 JSON 输出：保证返回合法 JSON 对象 */
-export async function generateJson<T>(config: Config, prompt: string): Promise<T> {
-  const url = `${BASE}/${config.geminiModel}:generateContent?key=${config.geminiApiKey}`;
-  const resp = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      generationConfig: {
-        temperature: 0.4,
-        maxOutputTokens: 2048,
-        responseMimeType: 'application/json',
-      },
-    }),
-  });
-  if (!resp.ok) {
-    const err = await resp.text().catch(() => '');
-    throw new Error(`Gemini JSON 请求失败 ${resp.status}: ${err.slice(0, 300)}`);
+function emptyChunks(): AsyncIterable<Uint8Array> {
+  return { async *[Symbol.asyncIterator]() {} };
+}
+
+/** 解析单条 SSE event 文本，把文本增量交给回调 */
+function emitSseEvent(event: string, callbacks: GeminiStreamCallbacks): void {
+  const dataLine = event.split('\n').find((l) => l.startsWith('data:'));
+  if (!dataLine) return;
+  try {
+    const payload = JSON.parse(dataLine.slice(5).trim());
+    const delta = payload?.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (delta) callbacks.onDelta(delta);
+  } catch {
+    /* 单帧损坏不中断整条流 */
   }
-  const data = (await resp.json()) as {
+}
+
+/** 逐事件消费 SSE：按 \n\n 拆帧，提取 candidates 文本增量 */
+async function consumeSse(
+  chunks: AsyncIterable<Uint8Array>,
+  callbacks: GeminiStreamCallbacks,
+): Promise<void> {
+  const decoder = new TextDecoder();
+  let buf = '';
+  for await (const value of chunks) {
+    buf += decoder.decode(value, { stream: true });
+    let match: RegExpExecArray | null;
+    // Gemini may frame SSE events with either LF or CRLF; accept both.
+    while ((match = /\r?\n\r?\n/.exec(buf))) {
+      const event = buf.slice(0, match.index);
+      buf = buf.slice(match.index + match[0].length);
+      emitSseEvent(event, callbacks);
+    }
+  }
+  buf += decoder.decode();
+  // Process a final event even when the stream has no trailing blank line.
+  if (buf.trim()) emitSseEvent(buf, callbacks);
+}
+
+async function collectString(src: AsyncIterable<Uint8Array>): Promise<string> {
+  const decoder = new TextDecoder();
+  let out = '';
+  for await (const chunk of src) out += decoder.decode(chunk, { stream: true });
+  return out + decoder.decode();
+}
+
+/** 非流式 JSON 输出：保证返回合法 JSON 对象。与流式路径一致，配置了代理时走代理隧道 */
+export async function generateJson<T>(config: Config, prompt: string): Promise<T> {
+  const host = 'generativelanguage.googleapis.com';
+  const path = `/v1beta/models/${config.geminiModel}:generateContent`;
+  const payload = JSON.stringify({
+    contents: [{ role: 'user', parts: [{ text: prompt }] }],
+    generationConfig: {
+      temperature: 0.4,
+      maxOutputTokens: 2048,
+      responseMimeType: 'application/json',
+    },
+  });
+
+  let body: string;
+  let status: number;
+  if (config.proxy) {
+    const res = await httpsRequestViaProxy(
+      config.proxy,
+      'POST',
+      host,
+      `${path}?key=${config.geminiApiKey}`,
+      { 'Content-Type': 'application/json' },
+      payload,
+    );
+    status = res.status;
+    body = res.body;
+  } else {
+    const resp = await fetch(`https://${host}${path}?key=${config.geminiApiKey}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: payload,
+    });
+    status = resp.status;
+    body = await resp.text().catch(() => '');
+  }
+
+  if (status !== 200) {
+    throw new Error(`Gemini JSON 请求失败 ${status}: ${body.slice(0, 300)}`);
+  }
+  const data = JSON.parse(body) as {
     candidates?: { content?: { parts?: { text?: string }[] } }[];
   };
   const text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';

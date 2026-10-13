@@ -9,11 +9,9 @@
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎬</text></svg>" />
 </head>
 <body>
-  <div class="bg-orbs" aria-hidden="true">
-    <div class="orb orb-1"></div>
-    <div class="orb orb-2"></div>
-    <div class="orb orb-3"></div>
-  </div>
+  <div class="paper-grain" aria-hidden="true"></div>
+
+  <h1 class="sr-only">YT 语镜 · 把 YouTube 字幕整理成中文对话文章</h1>
 
   <header class="topbar">
     <div class="brand">
@@ -29,6 +27,7 @@
     <!-- 输入工作区 -->
     <section class="panel input-panel" id="inputPanel">
       <div class="field">
+        <span class="kicker">SOURCE · 字幕源</span>
         <label class="field-label" for="videoUrl">YouTube 视频链接</label>
         <input
           id="videoUrl"
@@ -72,6 +71,7 @@
     <!-- 流式渲染区 -->
     <section class="panel article-panel" id="articlePanel" hidden>
       <div class="article-head">
+        <span class="kicker">DRAFT · 印稿</span>
         <h2 class="article-video-title" id="videoTitle"></h2>
         <div id="fallbackBadge" class="fallback-badge" hidden></div>
         <nav class="toc" id="toc" hidden></nav>
@@ -85,7 +85,7 @@
     </section>
 
     <section class="empty-state" id="emptyState">
-      <div class="empty-icon">◈</div>
+      <div class="empty-icon" aria-hidden="true">⌑</div>
       <p class="empty-title">把一段 YouTube 字幕，变成一篇有思想的中文对话文章</p>
       <p class="empty-desc">抓取字幕 → 流式生成 → 章节 5W1H 剖析。全程实时可见。</p>
     </section>
@@ -104,6 +104,12 @@
       <div class="modal-error" id="modalError" hidden></div>
     </div>
   </div>
+
+  <footer class="page-foot">
+    <span>YT · 语镜 LENS</span>
+    <span aria-hidden="true">⌑</span>
+    <span>字幕 → 对话 → 5W1H · 全程流式</span>
+  </footer>
 
   <script src="/app.js"></script>
 </body>

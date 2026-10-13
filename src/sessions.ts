@@ -6,7 +6,8 @@
  */
 import type { CaptionSegment, Chapter, ParsedRequirements } from './lib/types';
 import { extractChapterBody } from './lib/chapters';
-import type { AppEnv } from './config';
+import { readConfig, type AppEnv } from './config';
+import { generateJson } from './lib/gemini';
 
 export interface SessionContext {
   videoId: string;
@@ -104,38 +105,13 @@ export class SessionDO {
     const chapterBody = extractChapterBody(context.article, index);
     const prompt = buildFiveW1HPrompt(context, chapter.title, chapterBody);
 
-    const geminiKey = this.env.GEMINI_API_KEY ?? '';
-    if (!geminiKey) return new Response('GEMINI_API_KEY 未配置', { status: 500 });
-    const model = this.env.GEMINI_MODEL ?? 'gemini-2.0-flash';
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiKey}`;
-
-    let data: unknown;
+    // 与主文章生成保持一致：配置了代理时走代理隧道，避免受限网络直连 Google 卡死
     try {
-      const resp = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ role: 'user', parts: [{ text: prompt }] }],
-          generationConfig: {
-            temperature: 0.4,
-            maxOutputTokens: 2048,
-            responseMimeType: 'application/json',
-          },
-        }),
-      });
-      if (!resp.ok) {
-        const err = await resp.text().catch(() => '');
-        return new Response(`Gemini 请求失败 ${resp.status}: ${err.slice(0, 200)}`, { status: 502 });
-      }
-      const payload = (await resp.json()) as {
-        candidates?: { content?: { parts?: { text?: string }[] } }[];
-      };
-      const text = payload.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
-      data = JSON.parse(text.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim());
+      const data = await generateJson<FiveW1H>(readConfig(this.env), prompt);
+      return Response.json({ chapter: chapter.title, ...data });
     } catch (e) {
-      return new Response(`5W1H 解析失败: ${errMsg(e)}`, { status: 500 });
+      return new Response(`5W1H 生成失败: ${errMsg(e)}`, { status: 500 });
     }
-    return Response.json({ chapter: chapter.title, ...(data as FiveW1H) });
   }
 
   /** 读取上下文；过期返回 410（即使 alarm 尚未清理） */

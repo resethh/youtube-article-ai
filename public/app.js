@@ -312,7 +312,7 @@
       return;
     }
     const items = W5H_LABELS.map((k) => {
-      const v = data[k];
+      const v = data[k] ?? data[k.toLowerCase()]; // 兼容后端小写键（who/...）
       return v ? `<div class="w5h-item" data-k="${k}"><div class="k">${k} · ${W5H_CN[k]}</div><div class="v">${escapeHtml(v)}</div></div>` : '';
     }).join('');
     w5hGrid.innerHTML = items;

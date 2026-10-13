@@ -7,3 +7,11 @@ dist/
 
 # 本地 Claude Code 配置（含明文 API Token，不入库）
 .claude/settings.json
+.claude/settings.local.json
+
+部署*.md
+需求文档.md
+
+# 代理明文凭据（含账号密码，不入库）
+Webshare*.txt
+*.proxies.txt
