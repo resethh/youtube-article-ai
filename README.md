@@ -166,14 +166,6 @@ TCP connect(代理) → CONNECT 目标:443 → 读 200 → startTls()（特性�
 | SessionDO 带 TTL + Alarm 幂等清理 | 资源可回收，过期语义明确（410） |
 | 前端零框架 + 手写轻量 Markdown 渲染 | 避免构建链膨胀，产物 < 13KB |
 
-## 难度评估
-
-**中上（约 4/5）**：
-
-- 字幕获取链路 + TCP 代理隧道：最不确定，约占 40% 工作量；`startTls` / 反爬形态只能在真实部署环境验证
-- 流式 SSE + DO 会话：方案成熟，中等难度
-- 前端 + prompt 编排：中等偏下
-- 对熟悉 Cloudflare Workers 的工程师约 2~3 天；主要风险点是 YouTube 反爬策略变化
 
 ## 目录结构
 
